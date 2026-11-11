@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/phishbacon/opencode-chatgpt-web/releases/download/v6.1.18-rc3/codex-web-gpt-6.1.18-rc3-win-x64.exe"><img src="assets/readme/download-windows.svg" width="224" height="64" alt="Windows · x64"></a>&nbsp;
-  <a href="https://github.com/phishbacon/opencode-chatgpt-web/releases/download/v6.1.18-rc3/codex-web-gpt-6.1.18-rc3-mac-arm64.dmg"><img src="assets/readme/download-macos.svg" width="224" height="64" alt="macOS · Apple silicon"></a>&nbsp;
-  <a href="https://github.com/phishbacon/opencode-chatgpt-web/releases/download/v6.1.18-rc3/codex-web-gpt-6.1.18-rc3-linux-x64.AppImage"><img src="assets/readme/download-linux.svg" width="224" height="64" alt="Linux · x64"></a>
+  <a href="https://github.com/ristiisa/opencode-chatgpt-web/releases/download/v6.1.18-rc3.oc.1/codex-web-gpt-6.1.18-rc3.oc.1-win-x64.exe"><img src="assets/readme/download-windows.svg" width="224" height="64" alt="Windows · x64"></a>&nbsp;
+  <a href="https://github.com/ristiisa/opencode-chatgpt-web/releases/download/v6.1.18-rc3.oc.1/codex-web-gpt-6.1.18-rc3.oc.1-mac-arm64.dmg"><img src="assets/readme/download-macos.svg" width="224" height="64" alt="macOS · Apple silicon"></a>&nbsp;
+  <a href="https://github.com/ristiisa/opencode-chatgpt-web/releases/download/v6.1.18-rc3.oc.1/codex-web-gpt-6.1.18-rc3.oc.1-linux-x64.AppImage"><img src="assets/readme/download-linux.svg" width="224" height="64" alt="Linux · x64"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/phishbacon/opencode-chatgpt-web/releases/download/v6.1.18-rc3/codex-web-gpt-6.1.18-rc3-mac-x64.dmg">macOS Intel</a> · <a href="https://github.com/phishbacon/opencode-chatgpt-web/releases/latest">所有版本</a>
+  <a href="https://github.com/ristiisa/opencode-chatgpt-web/releases/download/v6.1.18-rc3.oc.1/codex-web-gpt-6.1.18-rc3.oc.1-mac-x64.dmg">macOS Intel</a> · <a href="https://github.com/ristiisa/opencode-chatgpt-web/releases/latest">所有版本</a>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="#get-started">开始使用</a> · <a href="https://github.com/phishbacon/opencode-chatgpt-web/releases">更新内容</a> · <a href="#architecture">架构</a> · <a href="TROUBLESHOOTING.md">故障排除</a>
+  <a href="#get-started">开始使用</a> · <a href="https://github.com/ristiisa/opencode-chatgpt-web/releases">更新内容</a> · <a href="#architecture">架构</a> · <a href="TROUBLESHOOTING.md">故障排除</a>
 </p>
 
 在 Codex 原生模型选择器中使用账户可用的 ChatGPT 网页版模型，包括 Pro。消息通过已登录的 ChatGPT 网页会话发送，并受该账户适用的使用限制约束。保留原有的界面、任务、图片和流式输出。
@@ -49,13 +49,13 @@
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://github.com/phishbacon/opencode-chatgpt-web/releases/latest/download/install-launcher.sh | sh
+curl -fsSL https://github.com/ristiisa/opencode-chatgpt-web/releases/latest/download/install-launcher.sh | sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/phishbacon/opencode-chatgpt-web/releases/latest/download/install-launcher.ps1 | iex
+irm https://github.com/ristiisa/opencode-chatgpt-web/releases/latest/download/install-launcher.ps1 | iex
 ```
 
 </details>
