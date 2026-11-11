@@ -21,10 +21,15 @@ import {
   storedBrowserLoginCapabilities,
 } from "./browser-login";
 import {
-  installCodexIntegration,
-  preflightCodexIntegration,
+  inspectCodexIntegration,
   readCodexSubagentProtocol,
+  uninstallCodexIntegration,
 } from "./codex-integration";
+import {
+  installOpenCodeIntegration,
+  loadOpenCodeIdentityPluginBundle,
+  preflightOpenCodeIntegration,
+} from "./opencode/host-integration";
 import { inspectLauncherBrowserHost } from "./launcher-browser-host";
 import {
   DEV_CONFIG_PURPOSE,
@@ -42,7 +47,7 @@ import {
 import { connectTunnel, createTunnelConfig, installRuntimeKey, installRuntimeKeyBytes, installTunnelClient, managedRuntimeKeyPath, stopTunnel, waitForTunnelReady } from "./tunnel";
 import { getTunnelServiceStatus, installTunnelService, restartTunnelService, stopTunnelService, tunnelServiceDefinitionMatches, uninstallTunnelService } from "./tunnel-service";
 import { VERSION } from "./version";
-import { openCodeWebsiteConnectorName, type WebsiteMcpContract } from "./opencode/website-connector";
+import { isOpenCodeWebsiteConnectorName, openCodeWebsiteConnectorName, type WebsiteMcpContract } from "./opencode/website-connector";
 
 export interface SetupOptions {
   connectorNameSuffix?: string;
@@ -62,6 +67,7 @@ export interface SetupOptions {
   experimentalFreshConversationPerTurn?: boolean;
   useTemporaryChats?: boolean;
   zeroRiskProEnabled?: boolean;
+  /** Accepted for launcher compatibility; production installs the OpenCode provider instead of a Codex route. */
   replaceCodexRoute?: boolean;
   preserveDisconnectedRoute?: boolean;
   restartService?: boolean;
@@ -79,6 +85,9 @@ export interface SetupResult {
   tunnelReady: boolean | null;
   codexRestartRequired: true;
   connectorSetupRequired: boolean;
+  openCodeConfigPath: string;
+  openCodeModels: number;
+  warnings: string[];
 }
 
 interface PreparedSetup {
@@ -283,6 +292,17 @@ function baseConfig(
   config.mode = options.mode;
   if (options.browserInteractionMode) config.browserInteractionMode = options.browserInteractionMode;
   if (options.websiteMcpContract) config.websiteMcpContract = options.websiteMcpContract;
+  else if (profile === "production") {
+    // OpenCode Full Harness tool calls need the OpenCode website MCP contract: only it
+    // issues the bridge receipts OpenCode turns verify. Zero Risk and browser-only keep
+    // their own contracts, so the flag follows the selected mode on every setup.
+    if (config.mode === "full" && config.browserInteractionMode === "automatic"
+      && options.connectorNameSuffix === undefined) {
+      config.websiteMcpContract = "opencode";
+    } else {
+      delete config.websiteMcpContract;
+    }
+  }
   if (config.websiteMcpContract === "opencode") {
     if (config.mode !== "full" || config.browserInteractionMode !== "automatic") {
       throw new Error("OpenCode website tools require full mode and automatic browser interaction");
@@ -293,10 +313,15 @@ function baseConfig(
     config.appName = openCodeWebsiteConnectorName(profile);
     config.automaticAppName = openCodeWebsiteConnectorName(profile);
   } else {
+    // Leaving the OpenCode contract (Zero Risk or browser-only) must not carry its
+    // fixed connector name into the generic "OpenCode <suffix>" identities.
+    const identities = existing?.automaticAppName && isOpenCodeWebsiteConnectorName(existing.automaticAppName)
+      ? { ...existing, automaticAppName: undefined }
+      : existing;
     Object.assign(config, resolveInteractionConnectorIdentities(
       config.browserInteractionMode,
       profile,
-      existing,
+      identities,
       options.connectorNameSuffix,
     ));
   }
@@ -539,16 +564,28 @@ export function preflightSetup(options: SetupOptions): void {
       throw new Error("Automatic and Zero Risk require different Tunnel IDs and separate ChatGPT connectors");
     }
   }
-  preflightCodexIntegration(config, {
-    replaceExistingRoute: options.replaceCodexRoute,
-  });
+  preflightOpenCodeIntegration();
+}
+
+/**
+ * Earlier releases of this fork installed the upstream Codex route into
+ * ~/.codex/config.toml. OpenCode never reads that file, so setup restores it.
+ */
+function removeLegacyCodexRoute(): string[] {
+  try {
+    if (!inspectCodexIntegration().installed) return [];
+    uninstallCodexIntegration();
+    return [];
+  } catch (error) {
+    return [`The legacy Codex route in ~/.codex/config.toml could not be restored: ${error instanceof Error ? error.message : String(error)}`];
+  }
 }
 
 export async function setup(options: SetupOptions): Promise<SetupResult> {
   const { existing, config, launcherOwned } = prepareSetup(options);
-  preflightCodexIntegration(config, {
-    replaceExistingRoute: options.replaceCodexRoute,
-  });
+  preflightOpenCodeIntegration();
+  // Load the plugin before changing any runtime state: a runtime without its bundle fails here.
+  const pluginBundle = await loadOpenCodeIdentityPluginBundle();
   const refreshTunnelWorker = tunnelWorkerRuntimeChanged(existing, config);
   if (existing && options.restartService) config.controlToken = randomBytes(32).toString("base64url");
   const beforeService = getServiceStatus();
@@ -688,10 +725,11 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
     launcherOwned && existing && existing.browserHost !== "launcher",
   );
   if (!migratingTerminalRuntime) removeLegacyRuntimeArtifacts(config);
-  installCodexIntegration(config, {
-    replaceExistingRoute: options.replaceCodexRoute,
-    preserveDisconnectedRoute: options.preserveDisconnectedRoute,
+  const integration = installOpenCodeIntegration(config, {
+    pluginBundle,
+    preserveDisconnected: options.preserveDisconnectedRoute,
   });
+  const warnings = removeLegacyCodexRoute();
 
   return {
     mode: config.mode,
@@ -701,6 +739,9 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
     tunnelReady,
     codexRestartRequired: true,
     connectorSetupRequired: config.mode === "full",
+    openCodeConfigPath: integration.configFile,
+    openCodeModels: integration.installed.models,
+    warnings,
   };
 }
 

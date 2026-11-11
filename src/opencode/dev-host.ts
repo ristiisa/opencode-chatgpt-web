@@ -13,13 +13,12 @@ import net from "node:net";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { availableChatGptWebModelRoutes, resolveChatGptWebContextLimits } from "../chatgpt-web-models";
 import type { AppConfig } from "../config";
 import { assertOpenCodeDevListenerConfig } from "./dev-listener";
+import { buildOpenCodeProviderEntry, OPENCODE_PROVIDER_ID as PROVIDER_ID } from "./provider-catalog";
 import { parseTurnSigningKey } from "./turn-binding";
 
 const DEFAULT_DEV_PORT = 17843;
-const PROVIDER_ID = "opencode-chatgpt-web";
 
 export interface OpenCodeDevHostPaths {
   root: string;
@@ -177,35 +176,20 @@ export function prepareOpenCodeDevHost(
   assertOpenCodeDevListenerConfig({ ...config, port }, { profileHome });
   if (!isAbsolute(identityModule)) throw new Error("OpenCode DEV identity plugin import must be absolute");
   const paths = openCodeDevHostPaths(profileHome);
-  const routes = availableChatGptWebModelRoutes(config);
-  if (routes.length === 0 || routes.some(route => route.interactionMode !== "automatic")) {
-    throw new Error("OpenCode DEV host needs at least one automatic ChatGPT browser model");
+  let catalog: ReturnType<typeof buildOpenCodeProviderEntry>;
+  try {
+    catalog = buildOpenCodeProviderEntry(config, {
+      baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "local-dev-bridge-no-secret",
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("OpenCode needs at least one")) {
+      throw new Error("OpenCode DEV host needs at least one automatic ChatGPT browser model");
+    }
+    throw error;
   }
-  const models = Object.fromEntries(routes.map(route => {
-    const suffix = route.slug.slice("chatgpt-web/".length);
-    const limits = resolveChatGptWebContextLimits(route.backendModel, route.adapterEffort, config,
-      route.interactionMode === "automatic" ? route.modelFamily : undefined);
-    return [suffix, {
-      name: route.displayName,
-      modelID: `${PROVIDER_ID}/${suffix}`,
-      capabilities: { tools: true, input: ["text"], output: ["text"] },
-      // Expose the practical pre-compaction budget, not the raw window: OpenCode
-      // compacts near limit.context, and a compaction summary that approaches the
-      // measured ChatGPT Web window is rejected by the browser-side size guard.
-      limit: { context: limits.autoCompactTokenLimit, output: Math.min(16_384, Math.floor(limits.contextWindow / 8)) },
-    }];
-  }));
-  const defaultModel = routes.find(route => route.slug === "chatgpt-web/gpt-6-sol") ?? routes[0]!;
   const providerConfig = {
-    providers: {
-      [PROVIDER_ID]: {
-        name: "OpenCode ChatGPT",
-        package: "@opencode/ai/providers/openai/responses",
-        settings: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "local-dev-bridge-no-secret" },
-        models,
-      },
-    },
-    model: `${PROVIDER_ID}/${defaultModel.slug.slice("chatgpt-web/".length)}`,
+    providers: { [PROVIDER_ID]: catalog.provider },
+    model: catalog.defaultModel,
     plugins: { paths: [] },
   };
   const pluginSource = `/**\n * Upstream OpenCode signs its own native turn metadata before Responses dispatch.\n * OpenCode uses this V2 hook plugin to sign host-owned turn identity and tool\n * inventory; the Electron browser and native tool permissions remain separate.\n */\nimport { createOpenCodeIdentityPlugin } from ${JSON.stringify(pathToFileURL(identityModule).href)};\nexport default createOpenCodeIdentityPlugin();\n`;

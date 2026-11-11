@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as configModule from "../src/config";
-import * as integration from "../src/codex-integration";
+import * as integration from "../src/opencode/host-integration";
 import * as service from "../src/service";
 import * as tunnel from "../src/tunnel";
 import * as tunnelService from "../src/tunnel-service";
@@ -89,8 +89,9 @@ for (const development of [false, true]) {
     const mocks = [save, inspect,
       spyOn(configModule, "getConfigPath").mockReturnValue(configPath),
       spyOn(configModule, "loadConfigForSetup").mockImplementation(() => structuredClone(existing)),
-      spyOn(integration, "preflightCodexIntegration").mockImplementation(() => {}),
-      spyOn(integration, "installCodexIntegration").mockImplementation(() => ({} as never)),
+      spyOn(integration, "preflightOpenCodeIntegration").mockImplementation(() => {}),
+      spyOn(integration, "loadOpenCodeIdentityPluginBundle").mockResolvedValue("export default {}\n"),
+      spyOn(integration, "installOpenCodeIntegration").mockImplementation(() => ({ configFile: "opencode.json", installed: { models: 1 } }) as never),
       spyOn(service, "getServiceStatus").mockReturnValue({ installed: false, loaded: false } as never),
       spyOn(service, "removeLegacyRuntimeArtifacts").mockImplementation(() => {}),
     ];
@@ -134,8 +135,12 @@ for (const development of [false, true]) for (const interaction of ["manual", "a
     const mocks = [
       spyOn(configModule, "getConfigPath").mockReturnValue(join(root, "config.json")),
       spyOn(configModule, "saveConfig").mockImplementation(value => { saved = value; calls.push("save"); }),
-      spyOn(integration, "preflightCodexIntegration").mockImplementation(() => {}),
-      spyOn(integration, "installCodexIntegration").mockImplementation(() => { calls.push("integrate"); return {} as never; }),
+      spyOn(integration, "preflightOpenCodeIntegration").mockImplementation(() => {}),
+      spyOn(integration, "loadOpenCodeIdentityPluginBundle").mockResolvedValue("export default {}\n"),
+      spyOn(integration, "installOpenCodeIntegration").mockImplementation(() => {
+        calls.push("integrate");
+        return { configFile: join(root, "opencode.json"), installed: { models: 1 } } as never;
+      }),
       spyOn(service, "getServiceStatus").mockReturnValue({ installed: false, loaded: false } as never),
       spyOn(service, "removeLegacyRuntimeArtifacts").mockImplementation(() => {}),
       spyOn(tunnelService, "getTunnelServiceStatus").mockReturnValue({ installed: false, loaded: false } as never),
@@ -175,7 +180,11 @@ for (const development of [false, true]) for (const interaction of ["manual", "a
       mocks.push(spyOn(configModule, "loadConfigForSetup").mockImplementation(() => structuredClone(initial)));
       writeFileSync(join(root, "config.json"), JSON.stringify(initial));
       await (development ? setupDevProfile : setup)({ ...options, port });
-      expect(saved?.appName).toBe(initial.appName);
+      // Production automatic Full Harness always uses the fixed OpenCode website connector:
+      // only the OpenCode MCP contract can serve signed OpenCode turns.
+      const openCodeContract = !development && interaction === "automatic";
+      expect(saved?.appName).toBe(openCodeContract ? "opencode-chatgpt-web" : initial.appName);
+      expect(saved?.websiteMcpContract).toBe(openCodeContract ? "opencode" : undefined);
       await (development ? setupDevProfile : setup)({ ...options, port, connectorNameSuffix: interaction === "manual" ? "Zero Risk" : development ? "Native2 DEV" : "Native2" });
       expect(saved?.appName).toBe(interaction === "manual" ? "OpenCode Zero Risk"
         : development ? "OpenCode Native2 DEV" : "OpenCode Native2");
@@ -205,11 +214,13 @@ for (const development of [false, true]) {
     writeFileSync(configPath, JSON.stringify(existing));
     let scannedSolAvailable = false;
     const save = spyOn(configModule, "saveConfig").mockImplementation(() => {});
-    const integrate = spyOn(integration, "installCodexIntegration").mockImplementation(() => ({} as never));
+    const integrate = spyOn(integration, "installOpenCodeIntegration")
+      .mockImplementation(() => ({ configFile: join(root, "opencode.json"), installed: { models: 1 } }) as never);
     const mocks = [save, integrate,
       spyOn(configModule, "getConfigPath").mockReturnValue(configPath),
       spyOn(configModule, "loadConfigForSetup").mockImplementation(() => structuredClone(existing)),
-      spyOn(integration, "preflightCodexIntegration").mockImplementation(() => {}),
+      spyOn(integration, "preflightOpenCodeIntegration").mockImplementation(() => {}),
+      spyOn(integration, "loadOpenCodeIdentityPluginBundle").mockResolvedValue("export default {}\n"),
       spyOn(service, "getServiceStatus").mockReturnValue({ installed: false, loaded: false } as never),
       spyOn(service, "removeLegacyRuntimeArtifacts").mockImplementation(() => {}),
       spyOn(browserHost, "inspectLauncherBrowserHost").mockImplementation(async () => ({
@@ -267,8 +278,9 @@ test.skipIf(process.platform !== "darwin")("external service setup retains valid
     spyOn(configModule, "getConfigPath").mockReturnValue(configPath),
     spyOn(configModule, "loadConfigForSetup").mockReturnValue(existing),
     spyOn(configModule, "saveConfig").mockImplementation(() => {}),
-    spyOn(integration, "preflightCodexIntegration").mockImplementation(() => {}),
-    spyOn(integration, "installCodexIntegration").mockImplementation(() => ({} as never)),
+    spyOn(integration, "preflightOpenCodeIntegration").mockImplementation(() => {}),
+    spyOn(integration, "loadOpenCodeIdentityPluginBundle").mockResolvedValue("export default {}\n"),
+    spyOn(integration, "installOpenCodeIntegration").mockImplementation(() => ({ configFile: "opencode.json", installed: { models: 1 } }) as never),
     spyOn(browserLogin, "browserLoginStateExists").mockReturnValue(true),
     spyOn(browserLogin, "storedBrowserLoginCapabilities").mockReturnValue({ solAvailable: true, extraHighAvailable: false, proAvailable: false } as never),
     spyOn(service, "getServiceStatus").mockReturnValue({ installed: true, loaded: true } as never),

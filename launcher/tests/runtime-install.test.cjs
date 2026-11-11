@@ -76,6 +76,7 @@ function runtimeFixture(root, version = "0.2.0") {
   if (process.platform !== "win32") fs.chmodSync(executable, 0o755);
   fs.writeFileSync(path.join(source, "app", "cli.js"), "cli");
   fs.writeFileSync(path.join(source, "app", "browser-helper.cjs"), "helper");
+  fs.writeFileSync(path.join(source, "app", "opencode-identity-plugin.js"), "export default {};");
   fs.mkdirSync(path.join(source, "app", "node_modules", "zod", "v4"), { recursive: true });
   fs.writeFileSync(path.join(source, "app", "node_modules", "zod", "v4", "index.js"), "zod-v4");
   if (process.platform !== "win32") {

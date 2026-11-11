@@ -80,6 +80,19 @@ if (!browserHelperBuild.success) {
   throw new Error(`Browser helper bundle failed: ${browserHelperBuild.logs.map(log => log.message).join("; ")}`);
 }
 
+// Installed verbatim into OpenCode's plugins/ directory by setup, so it must be
+// self-contained: no external packages, nothing resolved relative to this runtime.
+const openCodePluginBuild = await Bun.build({
+  entrypoints: [join(root, "src", "opencode", "identity-plugin-entry.ts")],
+  target: "node",
+  format: "esm",
+  outdir: appDir,
+  naming: "opencode-identity-plugin.js",
+});
+if (!openCodePluginBuild.success) {
+  throw new Error(`OpenCode identity plugin bundle failed: ${openCodePluginBuild.logs.map(log => log.message).join("; ")}`);
+}
+
 copyFileSync(join(root, "package.json"), join(appDir, "package.json"));
 copyFileSync(join(root, "bun.lock"), join(appDir, "bun.lock"));
 const install = Bun.spawnSync([process.execPath, "install", "--production", "--frozen-lockfile", "--ignore-scripts"], {

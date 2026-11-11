@@ -86,6 +86,35 @@ The shared browser, tunnel, and packaging machinery is documented in
 4. **For coding with tools**, open **MCP** in the launcher and complete the Full harness setup below.
 
 The app includes its browser and runtime. No separate Chrome, Node, or Bun installation is needed.
+It requires **OpenCode 2.x** (`npm i -g @opencode/cli`): the integration uses OpenCode's V2
+`providers` config and V2 plugin hooks. The 1.x `opencode-ai` package ignores both.
+
+<details>
+<summary><strong>What “Install models” changes</strong></summary>
+
+OpenCode reads its global config from `$XDG_CONFIG_HOME/opencode`, or `~/.config/opencode` when that
+variable is unset. On Windows that is `%USERPROFILE%\.config\opencode`. Installing models:
+
+- adds `providers["opencode-chatgpt-web"]` to `opencode.json`, pointing at the launcher's loopback
+  bridge (`http://127.0.0.1:17841/v1`). Other providers, plugins, `model` and every other setting
+  are left as they are. The file is created if it does not exist, and a symlinked file is written
+  through. A file that contains JSONC comments is refused rather than rewritten without them;
+- writes `plugins/chatgpt-web-identity.js`, a self-contained bundle that signs each OpenCode turn,
+  and `plugins/chatgpt-web-identity.json`, which names the bridge URL and the key file;
+- creates the turn signing key once in `~/.codex-chatgpt-web/opencode/turn-signing.key`. The bridge
+  and the plugin both read this file; it is never copied into OpenCode's config.
+
+Reinstalling or updating rewrites only these managed values. If the bridge cannot start, the
+launcher removes the provider entry until it can. **Settings → Remove OpenCode integration**
+(`codex-chatgpt-web uninstall`) removes the entry, plugin, and sidecar, restores any entry that
+previously used the same provider id, and deletes `opencode.json` only if the installer created it
+and nothing else was added. Earlier releases wrote a Codex route into `~/.codex/config.toml`; setup
+restores that file automatically.
+
+Check the result with `opencode debug config`, `opencode models opencode-chatgpt-web`, or
+`codex-chatgpt-web route status`.
+
+</details>
 
 <details>
 <summary><strong>Terminal install, updates & repair</strong></summary>

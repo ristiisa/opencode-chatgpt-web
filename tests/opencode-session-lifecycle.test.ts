@@ -4,6 +4,7 @@
  * host session.deleted event with a signed, owner-bound notice to the local
  * Responses bridge; these tests cover rejection, retry, and physical cleanup.
  */
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -17,6 +18,7 @@ import {
 } from "../src/opencode/session-lifecycle";
 import { OpenCodeTurnIssuer, OpenCodeTurnVerifier } from "../src/opencode/turn-binding";
 import { startServer } from "../src/server";
+import { ensureOpenCodeTurnSigningKey, openCodeIntegrationPaths } from "../src/opencode/host-integration";
 import type { CodexParsedRequest } from "../src/types";
 
 const SESSION = "ses_123456789";
@@ -234,5 +236,37 @@ describe("OpenCode session deletion over the local Responses listener", () => {
         .toThrow("session has been deleted");
       expect((await retry.json() as { error: string }).error).toContain("cleanup failed");
     } finally { f.server.stop(true); }
+  });
+});
+
+describe("production bridge signing key", () => {
+  test("loads the installed OpenCode key file so plugin-signed requests verify without environment setup", async () => {
+    const home = mkdtempSync(join(tmpdir(), "opencode-bridge-key-"));
+    const previousHome = process.env.CODEX_CHATGPT_WEB_HOME;
+    const previousKey = process.env.OPENCODE_CHATGPT_WEB_TURN_KEY;
+    process.env.CODEX_CHATGPT_WEB_HOME = home;
+    delete process.env.OPENCODE_CHATGPT_WEB_TURN_KEY;
+    const deletion = (port: number, header: string) => fetch(`http://127.0.0.1:${port}${OPENCODE_SESSION_DELETED_PATH}`, {
+      method: "POST", headers: { [OPENCODE_SESSION_DELETED_HEADER]: header },
+    });
+    try {
+      const unconfigured = startServer({ ...defaultConfig("browser-only"), port: 0 });
+      try { expect((await deletion(unconfigured.port!, "unsigned")).status).toBe(503); }
+      finally { unconfigured.stop(true); }
+
+      // The installer creates the key the identity plugin's sidecar points at.
+      const key = ensureOpenCodeTurnSigningKey(openCodeIntegrationPaths().keyFile);
+      const server = startServer({ ...defaultConfig("browser-only"), port: 0 });
+      try {
+        expect((await deletion(server.port!, "forged")).status).toBe(401);
+        const signed = signOpenCodeSessionDeletion(key, "ses_production_key_123", OWNER);
+        expect((await deletion(server.port!, signed)).status).toBe(200);
+      } finally { server.stop(true); }
+    } finally {
+      if (previousHome === undefined) delete process.env.CODEX_CHATGPT_WEB_HOME;
+      else process.env.CODEX_CHATGPT_WEB_HOME = previousHome;
+      if (previousKey !== undefined) process.env.OPENCODE_CHATGPT_WEB_TURN_KEY = previousKey;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
