@@ -84,9 +84,14 @@ describe("OpenCode provider limit sync", () => {
   });
 
   test("opencodeConfigPath honors XDG_CONFIG_HOME and HOME", () => {
-    expect(opencodeConfigPath({ XDG_CONFIG_HOME: "/xdg", HOME: "/home/u" }))
+    expect(opencodeConfigPath({ XDG_CONFIG_HOME: "/xdg", HOME: "/home/u" }, "linux"))
       .toBe(join("/xdg", "opencode", "opencode.json"));
-    expect(opencodeConfigPath({ HOME: "/home/u" }))
+    expect(opencodeConfigPath({ HOME: "/home/u" }, "linux"))
       .toBe(join("/home/u", ".config", "opencode", "opencode.json"));
+  });
+
+  test("opencodeConfigPath uses USERPROFILE instead of HOME on Windows", () => {
+    expect(opencodeConfigPath({ HOME: "/c/msys/u", USERPROFILE: "C:\\Users\\u" }, "win32"))
+      .toBe(join("C:\\Users\\u", ".config", "opencode", "opencode.json"));
   });
 });
