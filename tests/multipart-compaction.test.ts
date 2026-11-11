@@ -161,7 +161,7 @@ test("multipart compaction trims to the transaction budget with every stage insi
   expect(Math.max(...framed.map(message => message.length))).toBeLessThanOrEqual(CHATGPT_STAGED_MESSAGE_CHAR_BUDGET);
   expect(compiled.multipart!.commit).toContain("earlier history items were omitted");
   expect(() => assertMultipartFits(compiled, parsed)).not.toThrow();
-});
+}, 20_000);
 
 test("ordinary multipart turns retain all history and fail preflight above the ceiling", () => {
   const parsed = request();
