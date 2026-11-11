@@ -144,6 +144,20 @@ function regularFileChanged(snapshot, platform = process.platform) {
   return !fs.readFileSync(filePath).equals(snapshot.data);
 }
 
+/**
+ * OpenCode's global config directory, resolved exactly as OpenCode does:
+ * $XDG_CONFIG_HOME/opencode, else <home>/.config/opencode on every platform
+ * (on Windows the home is %USERPROFILE%, never an MSYS HOME).
+ */
+function openCodeConfigDir(env = process.env, platform = process.platform) {
+  const xdg = env.XDG_CONFIG_HOME?.trim();
+  if (xdg) return path.join(xdg, "opencode");
+  const home = platform === "win32"
+    ? env.USERPROFILE?.trim() || os.homedir()
+    : env.HOME?.trim() || os.homedir();
+  return path.join(home, ".config", "opencode");
+}
+
 function parseBridgeRouteResult(stdout, { expectedActive, requireInstalled = false } = {}) {
   let result;
   try {
@@ -198,6 +212,7 @@ class RuntimeHost {
       throw new Error("Runtime host DEV profile requires its isolated home");
     }
     this.platform = platform;
+    this.openCodeConfigDir = openCodeConfigDir(process.env, platform);
     this.codexHome = codexHome
       ? resolveUserPath(codexHome)
       : process.env.CODEX_HOME?.trim()
@@ -502,6 +517,13 @@ class RuntimeHost {
       path.join(coreHome, "codex", "integration-journal.recovery.json"),
       path.join(this.codexHome, "config.toml"),
       path.join(this.codexHome, "models_cache.json"),
+      // The OpenCode provider, identity plugin and its shared signing key are
+      // one installation: a failed setup restores all of them together.
+      path.join(this.openCodeConfigDir, "opencode.json"),
+      path.join(this.openCodeConfigDir, "plugins", "chatgpt-web-identity.js"),
+      path.join(this.openCodeConfigDir, "plugins", "chatgpt-web-identity.json"),
+      path.join(coreHome, "opencode", "integration-journal.json"),
+      path.join(coreHome, "opencode", "turn-signing.key"),
       path.join(coreHome, "secrets", "tunnel-runtime.key"),
       path.join(coreHome, "secrets", "tunnel-runtime-automatic.key"),
       path.join(coreHome, "secrets", "tunnel-runtime-zero-risk.key"),
@@ -532,7 +554,8 @@ class RuntimeHost {
       }
     }
     return [...paths].map(filePath => captureRegularFile(filePath, {
-      followSymlink: filePath === path.join(this.codexHome, "config.toml"),
+      followSymlink: filePath === path.join(this.codexHome, "config.toml")
+        || filePath === path.join(this.openCodeConfigDir, "opencode.json"),
     }));
   }
 
@@ -1579,6 +1602,9 @@ class RuntimeHost {
       if (previousRuntime.owner === "external") this.supervisor.prepareExternalMigration();
       else await this.supervisor.stopForSetup();
       setupCommandStarted = true;
+      // Production `setup` exits non-zero unless the OpenCode provider, identity plugin,
+      // sidecar and signing key verify after install, so success here means OpenCode can
+      // discover them.
       const result = await this.run(name, args, options);
       runtimeStartAttempted = true;
       const runtime = await this.supervisor.startIfConfigured();
@@ -1657,4 +1683,4 @@ class RuntimeHost {
   }
 }
 
-module.exports = { CURRENT_CONNECTOR_NAME, RuntimeHost };
+module.exports = { CURRENT_CONNECTOR_NAME, RuntimeHost, openCodeConfigDir };

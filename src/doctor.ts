@@ -4,6 +4,7 @@ import { getConfigDir, getConfigPath, loadConfig } from "./config";
 import { join } from "node:path";
 import { inspectCodexCompaction } from "./doctor-compaction";
 import { inspectCodexIntegration } from "./codex-integration";
+import { inspectOpenCodeIntegration } from "./opencode/host-integration";
 import { browserLoginStateExists, loginVerificationMarkerPath } from "./browser-login";
 import { getServiceStatus } from "./service";
 import { tunnelStatus } from "./tunnel";
@@ -173,12 +174,27 @@ export async function runDoctor(): Promise<DoctorReport> {
 
   const codex = inspectCodexIntegration();
   checks.push(...inspectCodexCompaction(config, codex.configPath));
-  if (!codex.installed) {
-    checks.push({ id: "codex", status: "error", message: "OpenCode model route is not installed" });
-  } else if (codex.errors.length > 0) {
-    checks.push({ id: "codex", status: "error", message: "OpenCode integration is inconsistent", detail: codex.errors.join("; ") });
+  if (codex.installed) {
+    checks.push({
+      id: "codex",
+      status: "warning",
+      message: "A legacy Codex route is still installed in ~/.codex/config.toml; rerun setup to restore it",
+    });
+  }
+  const openCode = inspectOpenCodeIntegration();
+  if (!openCode.installed) {
+    checks.push({ id: "opencode", status: "error", message: "OpenCode integration is not installed", detail: openCode.configPath });
+  } else if (openCode.errors.length > 0) {
+    checks.push({ id: "opencode", status: "error", message: "OpenCode integration is inconsistent", detail: openCode.errors.join("; ") });
+  } else if (!openCode.active) {
+    checks.push({ id: "opencode", status: "warning", message: "OpenCode provider is disconnected until the bridge runtime is ready" });
   } else {
-    checks.push({ id: "codex", status: "ok", message: "OpenCode native model route is installed" });
+    checks.push({
+      id: "opencode",
+      status: "ok",
+      message: `OpenCode provider and identity plugin are installed (${openCode.models} models)`,
+      detail: `${openCode.configPath}; ${openCode.pluginPath}`,
+    });
   }
 
   const service = getServiceStatus();

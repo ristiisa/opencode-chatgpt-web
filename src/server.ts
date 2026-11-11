@@ -53,6 +53,7 @@ import { assertOpenCodeDevListenerConfig, guardOpenCodeDevHttpRequest,
   type OpenCodeDevListenerOptions } from "./opencode/dev-listener";
 import { OPENCODE_TURN_HEADER, OpenCodeTurnVerifier, parseTurnSigningKey, type OpenCodeTurnClaims } from "./opencode/turn-binding";
 import { OpenCodeToolReceiptLedger } from "./opencode/tool-receipts";
+import { readOpenCodeTurnSigningKey } from "./opencode/host-integration";
 import {
   consumeOpenCodeSessionDeletion, OPENCODE_SESSION_DELETED_HEADER,
   OPENCODE_SESSION_DELETED_PATH,
@@ -1139,17 +1140,18 @@ export function startServer(
   } | null = null;
   const httpTurns = new HttpTurnCounter();
   const modelCatalogFetches = dependencies.modelCatalogFetches ?? new ModelCatalogFetches();
+  // Production reads the key the installed OpenCode identity plugin signs with;
+  // the environment variable remains an explicit override for tests and hosts.
+  const productionTurnKey = dependencies.openCodeDevListener ? undefined
+    : process.env.OPENCODE_CHATGPT_WEB_TURN_KEY
+      ? parseTurnSigningKey(process.env.OPENCODE_CHATGPT_WEB_TURN_KEY)
+      : config.purpose === undefined ? readOpenCodeTurnSigningKey() : undefined;
   const openCodeTurnVerifier = dependencies.openCodeTurnVerifier ?? (
-    !dependencies.openCodeDevListener && process.env.OPENCODE_CHATGPT_WEB_TURN_KEY
-      ? new OpenCodeTurnVerifier(parseTurnSigningKey(process.env.OPENCODE_CHATGPT_WEB_TURN_KEY))
-      : undefined
+    productionTurnKey ? new OpenCodeTurnVerifier(productionTurnKey) : undefined
   );
   const openCodeToolReceipts = dependencies.openCodeToolReceipts
     ?? new OpenCodeToolReceiptLedger(process.env.CODEX_CHATGPT_WEB_RECEIPTS_STATE || undefined);
-  const openCodeSessionDeletionKey = dependencies.openCodeSessionDeletionKey ?? (
-    !dependencies.openCodeDevListener && process.env.OPENCODE_CHATGPT_WEB_TURN_KEY
-      ? parseTurnSigningKey(process.env.OPENCODE_CHATGPT_WEB_TURN_KEY) : undefined
-  );
+  const openCodeSessionDeletionKey = dependencies.openCodeSessionDeletionKey ?? productionTurnKey;
   if (dependencies.openCodeDevListener && (!openCodeTurnVerifier || !openCodeSessionDeletionKey)) {
     throw new Error("OpenCode DEV listener requires a signed turn and session deletion key");
   }
@@ -1459,7 +1461,15 @@ export function startServer(
             new Request(req, { signal }),
             config,
             dependencies.adapterFactory,
-            { onTurnIdentity: bindIdentity, onOpenCodeSession: bindOpenCodeSession,
+            { onTurnIdentity: bindIdentity,
+              onOpenCodeSession: (sessionID, owner) => {
+                // OpenCode lists models from opencode.json and never fetches /v1/models,
+                // so a verified signed turn is what proves it loaded the installed
+                // provider, plugin and key: the launcher's catalog check reads this count.
+                successfulModelCatalogRequests += 1;
+                lastSuccessfulModelCatalogRequestAt = new Date().toISOString();
+                bindOpenCodeSession(sessionID, owner);
+              },
               openCodeTurnVerifier, openCodeToolReceipts },
           ),
           req.signal,

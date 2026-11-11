@@ -6,17 +6,36 @@
  * in opencode.json. OpenCode watches its config, so the model picker and
  * auto-compaction threshold follow the toggle without a manual edit.
  */
-import { chmodSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export interface OpenCodeModelLimit { contextWindow: number; autoCompactTokenLimit: number }
 
-/** OpenCode's config path, honoring the same XDG rules OpenCode uses. */
-export function opencodeConfigPath(env: NodeJS.ProcessEnv = process.env): string {
+/**
+ * OpenCode's global config directory. OpenCode resolves it as
+ * `$XDG_CONFIG_HOME/opencode`, else `<os.homedir()>/.config/opencode`, on every
+ * platform — including Windows, where os.homedir() is %USERPROFILE% and a
+ * Git-Bash/MSYS `HOME` is not consulted.
+ */
+export function opencodeGlobalConfigDir(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  const base = xdg && xdg.length > 0 ? xdg : join((env.HOME?.trim() || homedir()), ".config");
-  return join(base, "opencode", "opencode.json");
+  if (xdg) return join(xdg, "opencode");
+  const home = platform === "win32"
+    ? env.USERPROFILE?.trim() || homedir()
+    : env.HOME?.trim() || homedir();
+  return join(home, ".config", "opencode");
+}
+
+/** OpenCode's config path, honoring the same XDG rules OpenCode uses. */
+export function opencodeConfigPath(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(opencodeGlobalConfigDir(env, platform), "opencode.json");
 }
 
 /**
@@ -69,13 +88,16 @@ export async function syncOpenCodeProviderLimits(options: {
   }
   if (!changed) return false;
 
-  const temporary = `${configPath}.${process.pid}.tmp`;
+  // Write through a symlinked opencode.json (dotfile managers) instead of replacing the link.
+  let target = configPath;
+  try { if (lstatSync(configPath).isSymbolicLink()) target = realpathSync(configPath); } catch { /* read above succeeded */ }
+  const temporary = `${target}.${process.pid}.tmp`;
   try {
     writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     try {
-      chmodSync(temporary, statSync(configPath).mode & 0o777);
+      chmodSync(temporary, statSync(target).mode & 0o777);
     } catch { /* keep0600 */ }
-    renameSync(temporary, configPath);
+    renameSync(temporary, target);
     return true;
   } catch {
     try { rmSync(temporary, { force: true }); } catch { /* best effort */ }

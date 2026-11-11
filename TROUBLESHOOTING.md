@@ -30,35 +30,35 @@ The safe-log export is separate and does not include these browser checkpoint fi
 
 ## Models do not appear, or setup remains on step 3
 
-**Install models** updates the Codex route. Once installation finishes, step 3 is complete and you
-can connect MCP. The launcher checks model loading separately; waiting for that check does not
-prevent MCP setup.
+**Install models** adds the `opencode-chatgpt-web` provider to OpenCode's global `opencode.json` and
+installs `plugins/chatgpt-web-identity.js` next to it (see *What “Install models” changes* in the
+README). Setup reports success only after it reads back the provider, plugin, plugin settings,
+and signing key. Once installation finishes, step 3 is complete and you can connect MCP.
 
-A running Codex process can keep its old model catalog. If **(Web)** models are missing, fully quit
-every Codex Desktop window and Codex CLI process, then reopen Codex while the launcher is still
-running. If a **(Web)** model already answers successfully, you do not need to reinstall just because
-the launcher has not observed a new model-list request.
+OpenCode loads its config and plugins at startup. Fully quit every OpenCode process, including
+`opencode serve` and editor integrations, then reopen it while the launcher is running. The launcher
+marks model loading as verified after the first signed OpenCode turn reaches the bridge.
 
 If the models still do not appear:
 
-- confirm that **Codex itself** uses ChatGPT sign-in; signing into the launcher's browser is separate.
-  An API-key or signed-out Codex session can show only its built-in catalog without contacting the bridge;
-- open **Setup → Install into Codex** and click **Reinstall** once;
-- check **Settings → Run doctor**; a healthy local proxy does not mean the upstream model-list
-  request succeeded. Doctor reports its latest result separately;
-- make sure another Codex wrapper is not replacing the route; and
-- export a safe log after the failed catalog check.
+- run `opencode --version`. The integration needs **OpenCode 2.x** (`@opencode/cli` on npm).
+  OpenCode 1.x (`opencode-ai`) ignores the V2 `providers` key and plugin hooks;
+- run `codex-chatgpt-web route status`. It prints `configPath` and `pluginPath`, and lists any
+  missing or changed piece under `errors`;
+- check that OpenCode reads the same directory. `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR`, or a
+  different `XDG_CONFIG_HOME` in the shell that starts OpenCode can point it elsewhere. On Windows,
+  OpenCode uses `%USERPROFILE%\.config\opencode` even when Git Bash sets `HOME`;
+- if setup reports that `opencode.json` is not plain JSON, remove its comments (or move them to
+  `opencode.jsonc`) and install again;
+- run `opencode debug config` and look for `opencode-chatgpt-web` under `providers`; and
+- export a safe log after the failed check.
 
 A green step 3 followed by a browser-turn error means installation succeeded. Repeating step 3 will
 not repair an unrelated ChatGPT browser or model-turn failure.
 
-If Codex offers **only Luna (Web)** while the launcher's ChatGPT browser shows a paid model picker,
-the saved account capabilities may be wrong. The October 29 control change caused this in v6.1.15
-(#924, #932), including the subsequent Think-button timeout. Once the picker fix is installed, use
-**Setup → Install into Codex → Reinstall** to refresh those capabilities, then fully restart Codex.
-The launcher now requires a recognized model picker or Luna/Think control before saving this
-result. If neither is recognized, report the setup error with a safe log; do not force Luna to run
-under a different selected model.
+If OpenCode offers **only Luna (Web)** while the launcher's ChatGPT browser shows a paid model
+picker, the saved account capabilities may be wrong. Use **Setup → Install into OpenCode → Reinstall** to
+refresh them, then fully restart OpenCode.
 
 ### Windows: Cannot bind the local port (EACCES)
 
@@ -145,14 +145,13 @@ reuse the single-home permission cache. A secondary home's custom SQLite locatio
 that home's `config.toml` as `sqlite_home`; the bridge's `CODEX_SQLITE_HOME` applies only to its
 primary home. DEV commands keep their isolated home and discard this production setting.
 
-## Native models stop after closing the launcher
+## Web models fail after closing the launcher
 
-While the integration is installed, native Codex models also use the local bridge. Keep the launcher
-running, or use **Settings → Remove Codex integration** before quitting it. Then fully quit Codex,
-including background processes, and reopen it to load the restored route.
-
-CLI users can temporarily restore the previous route with `codex-chatgpt-web route disconnect`.
-Fully restart Codex after a route change. Starting the launcher reconnects an installed integration.
+The `(Web)` models are served by the launcher's local bridge, so they work only while the launcher
+is running. OpenCode's other providers do not use the bridge. If the bridge fails to start, the
+launcher removes the provider entry from `opencode.json`, and the next successful start adds it
+back. CLI users can do the same with `codex-chatgpt-web route disconnect` and `route connect`.
+Restart OpenCode after either change.
 
 ## Codex's usage-limit banner disables Send for Web models
 

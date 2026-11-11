@@ -151,6 +151,8 @@ function inspectRuntimeBundle(runtimeRoot, identity) {
     paths.executable,
     paths.entrypoint,
     path.join(runtimeRoot, "app", "browser-helper.cjs"),
+    // Copied into OpenCode's plugins/ directory by setup.
+    path.join(runtimeRoot, "app", "opencode-identity-plugin.js"),
     path.join(runtimeRoot, ...manifest.launcher.split("/")),
   ]) {
     const relativePath = path.relative(runtimeRoot, required).split(path.sep).join("/");

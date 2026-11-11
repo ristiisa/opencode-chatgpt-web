@@ -14,14 +14,18 @@ import {
   readLauncherBrowserHostDescriptor,
 } from "./launcher-browser-host";
 import {
-  activateCodexIntegration,
-  deactivateCodexIntegration,
   inspectCodexIntegration,
   readCodexSubagentProtocol,
   setCodexSubagentProtocol,
   uninstallCodexIntegration,
 } from "./codex-integration";
 import { formatDoctorReport, runDoctor } from "./doctor";
+import {
+  activateOpenCodeIntegration,
+  deactivateOpenCodeIntegration,
+  inspectOpenCodeIntegration,
+  uninstallOpenCodeIntegration,
+} from "./opencode/host-integration";
 import { runChatGptMcpMain } from "./adapters/chatgpt-web/mcp-main";
 import { runCommand } from "./process";
 import { startServer } from "./server";
@@ -393,7 +397,9 @@ async function setupCommand(args: string[]): Promise<void> {
     stdout.write("One account-level step remains: attach the tunnel to the ChatGPT connector named in config.\n");
     stdout.write("Open: https://chatgpt.com/#settings/Plugins\n");
   }
-  stdout.write("Restart the OpenCode app once so its native model catalog refreshes through the installed route.\n");
+  stdout.write(`OpenCode provider: ${result.openCodeModels} models in ${result.openCodeConfigPath}\n`);
+  for (const warning of result.warnings) process.stderr.write(`Warning: ${warning}\n`);
+  stdout.write("Restart OpenCode once so it loads the opencode-chatgpt-web provider and identity plugin.\n");
 }
 
 async function doctorCommand(args: string[]): Promise<void> {
@@ -410,20 +416,22 @@ async function routeCommand(args: string[]): Promise<void> {
   assertNoArgs(args);
   const result = action === "status"
     ? (() => {
-        const status = inspectCodexIntegration();
+        const status = inspectOpenCodeIntegration();
         return {
           installed: status.installed,
           active: status.active,
-          ...(status.journal && "reconnectOnStartup" in status.journal && status.journal.reconnectOnStartup
-            ? { reconnectOnStartup: true } : {}),
+          ...(status.reconnectOnStartup ? { reconnectOnStartup: true } : {}),
           ...(status.routeUrl ? { routeUrl: status.routeUrl } : {}),
+          configPath: status.configPath,
+          pluginPath: status.pluginPath,
+          models: status.models,
           errors: status.errors,
         };
       })()
     : action === "connect" || action === "recover"
-      ? activateCodexIntegration({ recoveryOnly: action === "recover" })
+      ? activateOpenCodeIntegration({ recoveryOnly: action === "recover" })
       : action === "disconnect"
-        ? deactivateCodexIntegration({ forRuntimeRecovery })
+        ? deactivateOpenCodeIntegration({ forRuntimeRecovery })
         : undefined;
   if (!result) throw new Error(`Unknown route action: ${action}`);
   stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -576,7 +584,10 @@ async function uninstallCommand(args: string[]): Promise<void> {
     stopTunnel(config);
   }
   if (config && process.platform === "darwin" && !launcherRuntimeStopped) await uninstallService(config);
-  uninstallCodexIntegration();
+  const removed = uninstallOpenCodeIntegration();
+  for (const warning of removed.warnings) process.stderr.write(`Warning: ${warning}\n`);
+  // Restores ~/.codex/config.toml if an earlier release installed the Codex route there.
+  if (inspectCodexIntegration().installed) uninstallCodexIntegration();
   if (!keepData) rmSync(getConfigDir(), { recursive: true, force: true });
   stdout.write(keepData ? "Uninstalled; private application data was preserved.\n" : "Uninstalled and removed private application data.\n");
 }
